@@ -12,5 +12,4 @@ bin           = @["visor"]
 # Dependencies
 
 requires "nim >= 1.0.6"
-requires "opengl"
-requires "sdl2"
+requires "glfw"
