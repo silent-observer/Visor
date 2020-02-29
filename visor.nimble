@@ -14,3 +14,4 @@ bin           = @["visor"]
 requires "nim >= 1.0.6"
 requires "glfw"
 requires "opengl"
+requires "glm"
