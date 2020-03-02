@@ -120,7 +120,7 @@ proc isInFrontOfPlane(sphereCenter: Vec3f, normal: Vec3f): bool =
   let d = dot(sphereCenter, normal)
   return d > -StarMapSphereRadius
 
-proc whichAreInsideRect*(normals: array[4, Vec3f]): seq[int] =
+proc whichAreInsideRect*(normals: seq[Vec3f]): seq[int] =
   for i, p in StarMapPoints:
     let isInside = normals.allIt(isInFrontOfPlane(p, it))
     if isInside:

@@ -1,37 +1,58 @@
 # This is just an example to get you started. A typical binary package
 # uses this file as the main entry point of the application.
 
-import opengl
+import openglConfiguration
 import glfw
+import opengl
+import engine/[calc, db]
+import times
+import sequtils
+import glm
+import globalVars
+from math import `^`
+
+const TargetFramerate = 60
 
 proc main() =
-  glfw.initialize()
-  var c = DefaultOpenglWindowConfig
-  c.size = (w: 800, h: 600)
-  c.title = "Visor"
-  c.resizable = true
-  c.version = glv33
-  c.profile = opCoreProfile
+  let starMap = readStarMap("data/stars.map")
+  var data = initEverything()
 
-  var window = newWindow(c)
+  var lastTimeFPS = epochTime()
+  var lastTimeFrameLimiter = epochTime()
+  var frameCount = 0
 
-  loadExtensions()
+  while not data.window.shouldClose:
+    let currTime = epochTime()
+    if currTime - lastTimeFrameLimiter <= 1 / TargetFramerate:
+      continue
+    lastTimeFrameLimiter += 1 / TargetFramerate
 
-  glViewport(0, 0, 800, 600)
-  proc framebufferSizeCallback(win: Window, res: tuple[w, h: int32]) =
-    glViewport(0, 0, res.w, res.h)
-  window.framebufferSizeCb = framebufferSizeCallback
+    glClearColor(0, 0, 0, 1)
+    glClear(GL_COLOR_BUFFER_BIT or GL_DEPTH_BUFFER_BIT)
 
-  glfw.swapInterval(1)
+    let viewMatrix = makeStarRotationMatrix(cameraAzimuth, cameraAltitude)
+    let viewMatrixInverse = inverse(viewMatrix)
 
-  while not window.shouldClose:
+    let newNormals = projectionPlaneNormals(fov).map(
+      proc (n: Vec3f): Vec3f =
+        let v = viewMatrixInverse * vec4f(n, 1)
+        return vec3f(v.x, v.y, v.z)
+    )
+
+    let starRegions = whichAreInsideRect(newNormals)
+    let minMag = int((2.04 / (0.0016 * fov + 0.47))^5)
+    let stars = starRegions.mapIt(starMap.map[it]).concat().filterIt(it.mag < minMag)
+
+    data.drawStars(stars.starDataToVBO, viewMatrix)
+    data.window.swapBuffers()
     glfw.pollEvents()
 
-    glClearColor(0.2, 0.3, 0.3, 1.0)
-    glClear(GL_COLOR_BUFFER_BIT)
-
-    glfw.swapBuffers(window)
-  window.destroy()
+    frameCount.inc
+    if currTime - lastTimeFPS >= 1:
+      echo "FPS: ", frameCount, ", ", stars.len, " stars"
+      lastTimeFPS += 1
+      frameCount = 0
+  
+  data.window.destroy()
   glfw.terminate()
-
 main()
