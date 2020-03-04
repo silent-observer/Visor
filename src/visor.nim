@@ -32,6 +32,7 @@ proc main() =
 
     let viewMatrix = makeStarRotationMatrix(cameraAzimuth, cameraAltitude)
     let viewMatrixInverse = inverse(viewMatrix)
+    let projectionMatrix = projectionMatrix(fov)
 
     let newNormals = projectionPlaneNormals(fov).map(
       proc (n: Vec3f): Vec3f =
@@ -43,13 +44,18 @@ proc main() =
     let minMag = int((2.04 / (0.0016 * fov + 0.47))^5)
     let stars = starRegions.mapIt(starMap.map[it]).concat().filterIt(it.mag < minMag)
 
-    data.drawStars(stars.starDataToVBO, viewMatrix)
+    data.drawStars(stars.starDataToVBO, viewMatrix, projectionMatrix)
+    data.drawLines(viewMatrix, projectionMatrix)
+    data.drawGround(viewMatrix, projectionMatrix)
+
     data.window.swapBuffers()
     glfw.pollEvents()
 
     frameCount.inc
     if currTime - lastTimeFPS >= 1:
       echo "FPS: ", frameCount, ", ", stars.len, " stars"
+      if stars.len < 10:
+        echo stars
       lastTimeFPS += 1
       frameCount = 0
   

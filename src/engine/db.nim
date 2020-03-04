@@ -74,11 +74,15 @@ proc constructFromSourceData(filename: string): StarMap =
     discard str.readData(data.starClass.addr, 2)
     var c = str.readInt16()
     bigEndian16(data.mag.addr, c.addr)
+
+    if data.mag >= 32768: data.mag -= 65536
+
     discard str.readInt16()
     discard str.readInt16()
     discard str.readInt16()
     discard str.readFloat32()
     discard str.readFloat32()
+    if data.mag == 0: continue
     result.map[findCellIndex(data.pos)].add(data)
     if i mod 1000 == 0: echo i
   for i in 0..<StarMapCount:
@@ -101,6 +105,8 @@ proc writeStarMap(map: Starmap, filename: string) =
 
 proc readStarMap*(filename: string): StarMap =
   var file = newFileStream(filename, fmRead)
+  var minM = 100000
+  var maxM = -100000
   for i in 0..<StarMapCount:
     let l = file.readInt32()
     result.map[i] = newSeqOfCap[StarData](l)
@@ -112,9 +118,13 @@ proc readStarMap*(filename: string): StarMap =
       d.pos.y = file.readFloat32()
       d.pos.z = file.readFloat32()
       d.mag = file.readInt32()
+      
+      minM = min(minM, d.mag)
+      maxM = max(maxM, d.mag)
       d.id = file.readInt32()
       discard file.readData(d.starClass.addr, 2)
       result.map[i].add d
+  echo minM, " ", maxM
 
 proc isInFrontOfPlane(sphereCenter: Vec3f, normal: Vec3f): bool =
   let d = dot(sphereCenter, normal)

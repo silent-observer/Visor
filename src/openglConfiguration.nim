@@ -11,10 +11,16 @@ const MaxStarsPerScreen = 20000
 type
   OpenGLData = object
     window*: Window
-    starTexture*: GLuint
-    starArrayObject*: GLuint
-    starShader*: GLuint
-    starPositionBuffer*: GLuint
+    starTexture: GLuint
+    starArrayObject: GLuint
+    starShader: GLuint
+    starPositionBuffer: GLuint
+    lineArrayObject: GLuint
+    meridianShader: Gluint
+    parallelShader: GLuint
+    groundArrayObject: Gluint
+    groundTexture: Gluint
+    groundShader: Gluint
 
 proc createTexture(filename: string): GLuint =
   var w, h, channels: int
@@ -78,6 +84,91 @@ proc createShaders(vertexText: string, fragmentText: string): GLuint =
   glDeleteShader(vertexShader)
   glDeleteShader(fragmentShader)
 
+proc configureStarBuffers(data: var OpenGLData) =
+  glGenVertexArrays(1, addr data.starArrayObject)
+  glBindVertexArray(data.starArrayObject)
+
+  var starVertexBuffer: GLuint
+  var starVertexData = [
+    0.005'f, 0.005, 1.0, 1.0,
+    0.005, -0.005, 1.0, 0.0,
+    -0.005, -0.005, 0.0, 0.0,
+
+    0.005'f, 0.005, 1.0, 1.0,
+    -0.005, 0.005, 0.0, 1.0,
+    -0.005, -0.005, 0.0, 0.0,
+  ]
+  glGenBuffers(1, addr starVertexBuffer)
+  glBindBuffer(GL_ARRAY_BUFFER, starVertexBuffer)
+  glBufferData(GL_ARRAY_BUFFER, sizeof(starVertexData), addr starVertexData[0], GL_STATIC_DRAW)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+  glGenBuffers(1, addr data.starPositionBuffer)
+  glBindBuffer(GL_ARRAY_BUFFER, data.starPositionBuffer)
+  glBufferData(GL_ARRAY_BUFFER, sizeof(Vec3f) * MaxStarsPerScreen, nil, GL_STREAM_DRAW)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+  
+  const starShaderVertexText = staticRead"shaders/stars.vert"
+  const starShaderFragText = staticRead"shaders/stars.frag"
+  data.starShader = createShaders(starShaderVertexText, starShaderFragText)
+  
+  glBindBuffer(GL_ARRAY_BUFFER, starVertexBuffer)
+  glVertexAttribPointer(0, 2, cGL_FLOAT, GL_FALSE, 4 * float32.sizeof, cast[pointer](0))
+  glEnableVertexAttribArray(0)
+  glVertexAttribPointer(1, 2, cGL_FLOAT, GL_FALSE, 4 * float32.sizeof, cast[pointer](2 * float32.sizeof))
+  glEnableVertexAttribArray(1)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+  glBindBuffer(GL_ARRAY_BUFFER, data.starPositionBuffer)
+  glVertexAttribPointer(2, 3, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](0))
+  glEnableVertexAttribArray(2)
+  glVertexAttribPointer(3, 1, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](3 * float32.sizeof))
+  glEnableVertexAttribArray(3)
+  glVertexAttribPointer(4, 3, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](4 * float32.sizeof))
+  glEnableVertexAttribArray(4)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+  glVertexAttribDivisor(2, 1)
+  glVertexAttribDivisor(3, 1)
+  glVertexAttribDivisor(4, 1)
+
+proc configureLineBuffers(data: var OpenGLData) =
+  glGenVertexArrays(1, addr data.lineArrayObject)
+  glBindVertexArray(data.lineArrayObject)
+
+  const meridianShaderVertexText = staticRead"shaders/meridian.vert"
+  const parallelShaderVertexText = staticRead"shaders/parallel.vert"
+  const basicShaderFragText = staticRead"shaders/basic.frag"
+  data.meridianShader = createShaders(meridianShaderVertexText, basicShaderFragText)
+  data.parallelShader = createShaders(parallelShaderVertexText, basicShaderFragText)
+  glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+proc configureGroundBuffers(data: var OpenGLData) =
+  glGenVertexArrays(1, addr data.groundArrayObject)
+  glBindVertexArray(data.groundArrayObject)
+
+  const basicTextureShaderVertexText = staticRead"shaders/basicTexture.vert"
+  const basicTextureShaderFragText = staticRead"shaders/basicTexture.frag"
+  data.groundShader = createShaders(basicTextureShaderVertexText, basicTextureShaderFragText)
+  
+  var groundVertexBuffer: GLuint
+  var groundVertexData = [
+    1'f, -0.02, 1, 5.0, 5.0,
+    -1'f, -0.02, 1, 0.0, 5.0,
+    1'f, -0.02, -1, 5.0, 0.0,
+
+    -1'f, -0.02, 1, 0.0, 5.0,
+    1'f, -0.02, -1, 5.0, 0.0,
+    -1'f, -0.02, -1, 0.0, 0.0,
+  ]
+  glGenBuffers(1, addr groundVertexBuffer)
+  glBindBuffer(GL_ARRAY_BUFFER, groundVertexBuffer)
+  glBufferData(GL_ARRAY_BUFFER, sizeof(groundVertexData), addr groundVertexData[0], GL_STATIC_DRAW)
+
+  glVertexAttribPointer(0, 3, cGL_FLOAT, GL_FALSE, 5 * float32.sizeof, cast[pointer](0))
+  glEnableVertexAttribArray(0)
+  glVertexAttribPointer(1, 2, cGL_FLOAT, GL_FALSE, 5 * float32.sizeof, cast[pointer](3 * float32.sizeof))
+  glEnableVertexAttribArray(1)
+
 proc initEverything*(): OpenGLData =
   glfw.initialize()
   var c = DefaultOpenglWindowConfig
@@ -123,78 +214,57 @@ proc initEverything*(): OpenGLData =
 
   result.window = window
   result.starTexture = createTexture("textures/star16x16.png")
+  result.groundTexture = createTexture("textures/water_texture.jpg")
+  glGenerateMipmap(GL_TEXTURE_2D)
 
-  glGenVertexArrays(1, addr result.starArrayObject)
-  glBindVertexArray(result.starArrayObject)
-
-  var starVertexBuffer: GLuint
-  var starVertexData = [
-    0.005'f, 0.005, 1.0, 1.0,
-    0.005, -0.005, 1.0, 0.0,
-    -0.005, -0.005, 0.0, 0.0,
-
-    0.005'f, 0.005, 1.0, 1.0,
-    -0.005, 0.005, 0.0, 1.0,
-    -0.005, -0.005, 0.0, 0.0,
-  ]
-  glGenBuffers(1, addr starVertexBuffer)
-  glBindBuffer(GL_ARRAY_BUFFER, starVertexBuffer)
-  glBufferData(GL_ARRAY_BUFFER, sizeof(starVertexData), addr starVertexData[0], GL_STATIC_DRAW)
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-
-  glGenBuffers(1, addr result.starPositionBuffer)
-  glBindBuffer(GL_ARRAY_BUFFER, result.starPositionBuffer)
-  glBufferData(GL_ARRAY_BUFFER, sizeof(Vec3f) * MaxStarsPerScreen, nil, GL_STREAM_DRAW)
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-  
-  const starShaderVertexText = staticRead"shaders/stars.vert"
-  const starShaderFragText = staticRead"shaders/stars.frag"
-  result.starShader = createShaders(starShaderVertexText, starShaderFragText)
-  
-  glBindBuffer(GL_ARRAY_BUFFER, starVertexBuffer)
-  glVertexAttribPointer(0, 2, cGL_FLOAT, GL_FALSE, 4 * float32.sizeof, cast[pointer](0))
-  glEnableVertexAttribArray(0)
-  glVertexAttribPointer(1, 2, cGL_FLOAT, GL_FALSE, 4 * float32.sizeof, cast[pointer](2 * float32.sizeof))
-  glEnableVertexAttribArray(1)
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-
-  glBindBuffer(GL_ARRAY_BUFFER, result.starPositionBuffer)
-  glVertexAttribPointer(2, 3, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](0))
-  glEnableVertexAttribArray(2)
-  glVertexAttribPointer(3, 1, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](3 * float32.sizeof))
-  glEnableVertexAttribArray(3)
-  glVertexAttribPointer(4, 3, cGL_FLOAT, GL_FALSE, 7 * float32.sizeof, cast[pointer](4 * float32.sizeof))
-  glEnableVertexAttribArray(4)
-  glBindBuffer(GL_ARRAY_BUFFER, 0)
-  glVertexAttribDivisor(2, 1)
-  glVertexAttribDivisor(3, 1)
-  glVertexAttribDivisor(4, 1)
+  result.configureStarBuffers()
+  result.configureLineBuffers()
+  result.configureGroundBuffers()
 
   glEnable(GL_BLEND)
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-proc activateStars(data: OpenGLData, viewMatrix: Mat4f) =
+proc configureMatrices(shader: GLuint, viewMatrix: Mat4f, projectionMatrix: Mat4f) =
+  glUniformMatrix4fv(glGetUniformLocation(shader, "projectionMatrix"),
+                     1, GL_FALSE, projectionMatrix.arr[0].arr[0].unsafeAddr)
+  glUniformMatrix4fv(glGetUniformLocation(shader, "viewMatrix"),
+                     1, GL_FALSE, viewMatrix.arr[0].arr[0].unsafeAddr)
+
+proc activateStars(data: OpenGLData, viewMatrix: Mat4f, projectionMatrix: Mat4f) =
   glUseProgram(data.starShader)
-  
-  var projectionMatrixCopy = projectionMatrix(fov)
-  glUniformMatrix4fv(glGetUniformLocation(data.starShader, "projectionMatrix"),
-                     1, GL_FALSE, projectionMatrixCopy.caddr)
-  
-  var viewMatrixCopy = viewMatrix
-  glUniformMatrix4fv(glGetUniformLocation(data.starShader, "viewMatrix"),
-                     1, GL_FALSE, viewMatrixCopy.caddr)
-  
+  data.starShader.configureMatrices(viewMatrix, projectionMatrix)
   glActiveTexture(GL_TEXTURE0)
   glBindTexture(GL_TEXTURE_2D, data.starTexture)
-  glBindVertexArray(data.starArrayObject)
 
-proc drawStars*(data: OpenGLData, starData: seq[float32], viewMatrix: Mat4f) =
-  data.activateStars(viewMatrix)
-  glBindBuffer(GL_ARRAY_BUFFER, data.starPositionBuffer)
-  glBufferData(GL_ARRAY_BUFFER, 7 * sizeof(float32) * MaxStarsPerScreen, nil, GL_STREAM_DRAW)
-  glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float32) * starData.len.GLsizei, unsafeAddr starData[0])
-  glBindVertexArray(data.starArrayObject)
-  glDrawArraysInstanced(GL_TRIANGLES, 0, 6, starData.len.GLsizei div 7)
+proc drawStars*(data: OpenGLData, starData: seq[float32], viewMatrix: Mat4f, projectionMatrix: Mat4f) =
+  if starData.len > 0:
+    data.activateStars(viewMatrix, projectionMatrix)
+    glBindBuffer(GL_ARRAY_BUFFER, data.starPositionBuffer)
+    glBufferData(GL_ARRAY_BUFFER, 7 * sizeof(float32) * MaxStarsPerScreen, nil, GL_STREAM_DRAW)
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float32) * starData.len.GLsizei, unsafeAddr starData[0])
+    glBindVertexArray(data.starArrayObject)
+    glDrawArraysInstanced(GL_TRIANGLES, 0, 6, starData.len.GLsizei div 7)
+
+proc drawLines*(data: OpenGLData, viewMatrix: Mat4f, projectionMatrix: Mat4f) =
+  glUseProgram(data.meridianShader)
+  data.meridianShader.configureMatrices(viewMatrix, projectionMatrix)
+  glBindVertexArray(data.lineArrayObject)
+  glDrawArraysInstanced(GL_LINE_LOOP, 0, 100, 9)
+
+  glUseProgram(data.parallelShader)
+  data.parallelShader.configureMatrices(viewMatrix, projectionMatrix)
+  glDrawArraysInstanced(GL_LINE_LOOP, 0, 100, 17)
+
+proc drawGround*(data: OpenGLData, viewMatrix: Mat4f, projectionMatrix: Mat4f) =
+  glUseProgram(data.groundShader)
+  data.groundShader.configureMatrices(viewMatrix, projectionMatrix)
+  glUniform4f(glGetUniformLocation(data.groundShader, "color"), 0.7 * 0.8, 0.9 * 0.8, 0.8, 0.8)
+
+  glActiveTexture(GL_TEXTURE0)
+  glBindTexture(GL_TEXTURE_2D, data.groundTexture)
+
+  glBindVertexArray(data.groundArrayObject)
+  glDrawArrays(GL_TRIANGLES, 0, 6)
 
 proc starDataToVBO*(starData: seq[StarData]): seq[float32] =
   result = newSeqOfCap[float32](starData.len * 7)
